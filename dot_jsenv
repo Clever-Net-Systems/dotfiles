@@ -1,0 +1,161 @@
+# js custom Linux environment v3.8 - 20210115
+#   Added dmesg -T
+# js custom Linux environment v3.7 - 20201203
+#   Added please
+# js custom Linux environment v3.6 - 20180515
+#   Added vim alias
+# js custom Linux environment v3.5 - 20180307
+#   Added lrtr
+# js custom Linux environment v3.4 - 20180213
+#   Added myldapsearch
+# js custom Linux environment v3.3 - 20140512
+#   Added alias pat
+# js custom Linux environment v3.2 - 20131102
+#   Changed -name to -type in grepfind
+#   Changed [] to \s in fcat
+#   Added pdfpextr
+# js custom Linux environment v3.1 - 20130818
+#   Added pgrep alias
+# js custom Linux environment v3.0 - 20130804
+#   Added stuff from Richard Kemp
+# js custom Linux environment v2.7 - 20130804
+#   Replaced -1 with 1 as zero() exit error code
+# js custom Linux environment v2.6 - 20121201
+#   Added --color=auto to grepfind
+# js custom Linux environment v2.5 - 20120917
+#   Removed aliases to servers
+#   Added mkmod function
+# js custom Linux environment v2.5 - 20120605
+#   Added aliases to servers
+# js custom Linux environment v2.4 - 20090907
+#   Added h to ls aliases
+# js custom Linux environment v2.3 - 20090217
+#   Removed interactive shell test
+# js custom Linux environment v2.2 - 20090213
+#   Commented out PROMPT_COMMAND='history -a; history -n'
+#   Added stuff from http://www.johnlawrence.net/code/?f=sfbashrc
+# js custom Linux environment v2.1 - 20080530
+#   Added bash history sync and comments
+# js custom Linux environment v2.0 - 20080503
+
+## If not running interactively, don't do anything  
+[[ $- == *i* ]] || return
+
+# Set Bash options
+shopt -s cdspell        # autocorrects cd misspellings
+shopt -s checkwinsize   # update the value of LINES and COLUMNS after each command if altered
+shopt -s cmdhist        # save multi-line commands in history as single line
+shopt -s dotglob        # include dotfiles in pathname expansion
+shopt -s expand_aliases # expand aliases
+shopt -s extglob        # enable extended pattern-matching features
+shopt -s nocaseglob     # pathname expansion will be treated as case-insensitive
+
+# overwrite a file with zeroes - http://www.shell-fu.org/lister.php?id=94  
+zero() {
+  case "$1" in
+    "")     echo "Usage: zero <file>"
+            return 1;
+  esac
+  filesize=`wc -c  "$1" | awk '{print $1}'`
+  dd if=/dev/zero of=$1 count=$filesize bs=1
+}
+
+# Decode base64 ldapsearch results - https://stackoverflow.com/questions/38710483/how-to-stop-ldapsearch1-from-base64-encoding-userpassword-and-other-attributes
+myldapsearch() {
+  ldapsearch $* | perl -MMIME::Base64 -MEncode=decode -n -00 -e 's/\n +//g;s/(?<=:: )(\S+)/decode("UTF-8",decode_base64($1))/eg;print'
+}
+alias ldapsearch=myldapsearch
+
+### Misc useful aliases
+alias l='ls -lha --group-directories-first'
+alias d='cd ..'
+alias c='clear'
+alias h='history'
+alias ls='ls --color=always' # See export LESS below
+alias tm='tail -f /var/log/messages'
+alias lrt='ls -alhrt'        # Useful for debugging
+alias pgrep='pgrep -fl'      # More verbose pgrep that matches the whole command line
+alias pat='puppet agent --test'
+alias please='sudo $(history -p !!)'
+alias dmesg='dmesg -T'
+
+### vim alias only if vim installed
+which vim > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+  alias vi=vim
+fi
+
+### Less options
+export LESS="-R" # Make sure to display only color control chars
+alias more=less # Always use less
+
+### Bash history sync
+# Forces the shell to append the history to the history file instead of overwriting it
+shopt -s histappend
+# Forces the shell to append any new commands to the history file and read new commands from the history file and append them to the history list
+#export PROMPT_COMMAND='history -a; history -n'
+# Don't save duplicates in the history
+export HISTCONTROL=ignoreboth
+# Set a history size of 1000 lines
+export HISTSIZE=1000
+
+### Misc useful functions
+# Reads a file, skipping all comments
+function fcat
+{
+  egrep -v "^\s*([#;]|$)" "$@"
+}
+
+# Tails any file with an initial 1000 lines output
+function tf
+{
+  tail -1000f "$@"
+}
+
+# Recursive full-text search
+function grepfind
+{
+  find . -type f -print0 | xargs -0 grep --color=auto "$@"
+}
+
+# Find the last modified file recursively - https://www.clevernetsystems.com/find-the-last-modified-file-recursively/
+function lrtr
+{
+  find "$@" -type f -exec stat --format '%Y :%y %n' {} \; | sort -nr | cut -d: -f2- | head
+}
+
+### Set xterm title and prompt, depending on the type of terminal
+case $TERM in
+	xterm*)
+		export PS1="\[\033]0;\u@\h: \w\007\e[34;1m\][ \u@\H:\w ]\\$\[\e[0m\] "
+		;;
+	linux)
+		export PS1="\[\e[34;1m\][ \u@\H:\w ]\\$\[\e[0m\] "
+		;;
+	*)
+		# Leave PS1 as is
+		;;
+esac
+
+### Source Debian's bash completions
+if [ -f /etc/bash_completion ]; then
+  . /etc/bash_completion
+fi
+
+### Puppet quick create module ###
+mkmod() {
+    mkdir -p /etc/puppet/modules/$1/files
+    mkdir /etc/puppet/modules/$1/lib
+    mkdir /etc/puppet/modules/$1/manifests
+    mkdir /etc/puppet/modules/$1/templates
+    mkdir /etc/puppet/modules/$1/tests
+}
+
+### pfdpextr PDF page extractor (http://www.linuxjournal.com/content/tech-tip-extract-pages-pdf) ###
+function pdfpextr() {
+    gs -sDEVICE=pdfwrite -dNOPAUSE -dBATCH -dSAFER \
+       -dFirstPage=${1} \
+       -dLastPage=${2} \
+       -sOutputFile=${3%.pdf}_p${1}-p${2}.pdf \
+       ${3}
+}
